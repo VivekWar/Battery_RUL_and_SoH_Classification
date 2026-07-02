@@ -1,0 +1,52 @@
+# Python caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# One-time notebook generator, not shared in the final submission
+notebook/build_notebook.py
+
+# Local editor and assistant state
+.vscode/
+.idea/
+.claude/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Local/raw dataset files
+data/
+
+# Large model or binary artifacts
+*.pkl
+*.pickle
+*.joblib
+*.h5
+*.hdf5
+*.pt
+*.pth
+*.onnx
+
+# Logs and temporary files
+*.log
+*.tmp
+*.bak
+*.swp

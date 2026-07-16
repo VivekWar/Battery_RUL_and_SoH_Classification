@@ -103,7 +103,7 @@ the best value per row.
 - **Contents:** charge, discharge, and impedance measurements collected from lithium-ion
   cells cycled to failure under controlled operating conditions. This project uses the
   **discharge** cycles only.
-- **Scale:** ~34 batteries in the raw metadata; 33 have usable discharge profiles; **26 are
+- **Scale:** ~34 batteries in the raw metadata; 34 have usable discharge profiles; **24 are
   retained** for modeling after Isolation Forest outlier removal.
 
 Each discharge cycle provides time-series traces of `Voltage_measured`, `Current_measured`,
@@ -119,27 +119,23 @@ Each discharge cycle provides time-series traces of `Voltage_measured`, `Current
 
 The notebook follows an end-to-end pipeline:
 
-1. **Load & clean** — parse the metadata index and filter to valid discharge cycles.
-2. **Feature engineering** — collapse each cycle's raw V/I/T/time trace into 20 scalar
-   features (see below).
-3. **Target construction** — derive per-cycle `SoH`, `RUL`, and `Degraded` labels, plus
-   BMS-realistic trend features.
-4. **Outlier detection** — flag anomalous battery profiles with an Isolation Forest before
-   modeling (7 of 33 profiles removed).
-5. **Exploratory data analysis** — SoH trajectories, feature correlations, target distributions.
-6. **Modeling** — nested `GroupKFold` randomized hyperparameter search for both an XGBoost
-   regressor (RUL) and an XGBoost classifier (health status).
-7. **Benchmarking** — compare against (a) a re-validated CNN-LSTM sequence model and (b) a
-   linear/logistic baseline on identical folds.
-8. **Diagnostics** — residual/error analysis, feature-importance ablation, learning curves,
-   and classifier probability calibration.
-9. **Persistence & inference** — final models (with scalers) saved to `artifacts/models/`,
-   plus a worked inference demo.
+1. **Load & Clean** — parse the metadata index and filter to valid discharge cycles.
+2. **Feature Engineering** — extract 20 scalar features from raw V/I/T traces, visualize raw physical telemetry, apply targeted single-cycle capacity spike correction, and flag anomalous battery aging profiles with an Isolation Forest.
+3. **Targets: SoH, RUL, Degraded** — derive per-cycle health labels and BMS-realistic trend features.
+4. **EDA (Targets & Health)** — SoH degradation trajectories, feature correlations, and target distributions.
+5. **Modelling Utilities** — shared helpers for the nested cross-validation loops.
+6. **RUL Regression** — nested `GroupKFold` randomized hyperparameter search for an XGBoost regressor, benchmarked against a CNN-LSTM sequence model and linear baseline, alongside residual analysis, ablation, and learning curves.
+7. **Healthy vs Degraded Classifier** — nested `GroupKFold` search for an XGBoost classifier, benchmarked against a logistic baseline, plus probability calibration checks.
+8. **Inference Demo** — end-to-end cycle scoring using models persisted to `artifacts/models/`.
+9. **Summary** — tabular metric comparison and final key takeaways.
 
 ---
 
 ## Feature Engineering
 
+This stage consists of three key steps to transform raw physical telemetry into a robust, clean dataset:
+
+### 1. Cycle-Level Feature Extraction
 Each discharge cycle is summarized into a fixed-length vector. **20 features** are used for
 classification; the regressor adds **3 cumulative trend features** (23 total).
 
@@ -156,6 +152,12 @@ classification; the regressor adds **3 cumulative trend features** (23 total).
 
 The classifier deliberately excludes any capacity-derived feature — capacity is the source of
 the label, so including it would leak the target.
+
+### 2. Targeted Spike Correction
+Several batteries exhibit physically impossible single-cycle capacity spikes (e.g., recovering 30% capacity in one cycle, then losing it the next) due to sensor noise. These localized anomalies are identified via z-score thresholds on rolling capacity differences and replaced using linear interpolation to preserve real degradation trends.
+
+### 3. Automated Battery Quality Filter
+After spike correction, some battery capacity curves remain fundamentally unreliable. The pipeline engineers curve-quality features per battery (`max_jump`, `std_diff`, `n_large_jumps`, `monotonicity`) and uses an **Isolation Forest** (`contamination=0.30`) to automatically flag and drop 10 unreliable profiles, leaving 24 clean batteries for training.
 
 ---
 
@@ -180,7 +182,7 @@ All targets are computed **per battery**, relative to that cell's own first-cycl
 - **Baselines:** `LinearRegression` / `LogisticRegression` on identical folds.
 - **Deep-learning benchmark:** a CNN-LSTM over raw cycle sequences (`SEQ_LEN = 10`,
   `CNN_EPOCHS = 30`), re-validated under the same `GroupKFold` protocol for a fair comparison.
-- **Outlier removal:** `IsolationForest` (`contamination = 0.2`) on per-battery aging profiles.
+- **Outlier removal:** `IsolationForest` (`contamination = 0.30`) applied to engineered curve-quality features per battery.
 - **Burn-in:** the first `MIN_CYCLES_TO_EVAL = 10` cycles per battery are excluded from evaluation.
 
 ---
@@ -303,7 +305,7 @@ pip install -r notebook/requirements.txt
 
 ## Limitations
 
-- Only **26–34 batteries** are available after cleaning, which caps how well any model can
+- Only **24–34 batteries** are available after cleaning, which caps how well any model can
   extrapolate a full lifespan from a few early cycles — this, not model choice, is the main
   ceiling on RUL R².
 - **2 of 5 outer folds** still show negative R² even for XGBoost: their held-out cells exhibit
